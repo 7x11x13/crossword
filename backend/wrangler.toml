@@ -1,0 +1,16 @@
+name = "crossword"
+main = "./src/index.ts"
+compatibility_date = "2024-07-25"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "crosswords"
+database_id = "d3e2c556-85f7-41c6-970e-f6db9b486edf"
+
+[triggers]
+crons = [ "*/15 * * * *" ]
+
+[vars]
+FIRST_POLL_DATE = "2020-11-27"
+POLL_DURATION_DAYS = "7"
+USER_AGENT = ":7x11x13.xyz.crossword-poll-archive:v1.0.0 (by 7x11x13)"

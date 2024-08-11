@@ -1,0 +1,23 @@
+{
+	"name": "backend",
+	"version": "1.0.0",
+	"private": true,
+	"scripts": {
+		"deploy": "wrangler deploy src/index.ts",
+		"dev": "wrangler dev --test-scheduled --port 8787",
+		"start": "wrangler dev --test-scheduled --port 8787",
+		"test": "vitest run"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20240718.0",
+		"@prisma/adapter-d1": "^5.18.0",
+		"@types/he": "^1.2.3",
+		"prisma": "^5.18.0",
+		"typescript": "^5.4.5",
+		"wrangler": "^3.0.0"
+	},
+	"dependencies": {
+		"@prisma/client": "^5.18.0",
+		"he": "^1.2.0"
+	}
+}

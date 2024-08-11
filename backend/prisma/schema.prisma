@@ -1,0 +1,35 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Crossword {
+  publishedDate       Int     @id
+  author              String
+  editor              String
+  dateString          String
+  dayName             String
+  pollExists          Boolean
+  pollURL             String?
+  excellent           Int?
+  good                Int?
+  average             Int?
+  poor                Int?
+  terrible            Int?
+  noVote              Int?
+  votes               Int?
+  excellentPercentage Float?
+  goodPercentage      Float?
+  averagePercentage   Float?
+  poorPercentage      Float?
+  terriblePercentage  Float?
+  averageRating       Float?
+}

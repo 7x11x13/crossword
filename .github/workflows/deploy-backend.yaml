@@ -1,0 +1,28 @@
+name: Deploy Cloudflare Worker
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - backend/**
+      - .github/workflows/deploy-backend.yaml
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: "backend"
+          secrets: |
+            REDDIT_USERNAME
+            REDDIT_PASSWORD
+            REDDIT_CLIENT_ID
+            REDDIT_CLIENT_SECRET
+        env:
+          REDDIT_USERNAME: ${{ secrets.REDDIT_USERNAME }}
+          REDDIT_PASSWORD: ${{ secrets.REDDIT_PASSWORD }}
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
