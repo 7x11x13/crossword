@@ -70,10 +70,10 @@ function App() {
 				filterFn: (row, _, [start, end]: [Date?, Date?]) => {
 					const rowDate = intToDate(row.original.publishedDate);
 					let between = true;
-					if (start !== undefined) {
+					if (start) {
 						between &&= rowDate >= start;
 					}
-					if (end !== undefined) {
+					if (end) {
 						between &&= rowDate <= end;
 					}
 					return between;
@@ -160,6 +160,11 @@ function App() {
 		enableColumnResizing: true,
 		enableColumnOrdering: true,
 		enableFilterMatchHighlighting: false,
+		mantineFilterDateInputProps: {size: "xs", miw: "25"},
+		mantineFilterTextInputProps: {size: "xs", miw: "25"},
+		defaultColumn: {
+			size: 150
+		}
 	});
 
 	async function loadPollData() {
