@@ -79,7 +79,9 @@ function App() {
 					return between;
 				},
 				Cell: ({ cell }: { cell: MRT_Cell<Poll, unknown> }) => (
-					<Anchor href={cell.row.original.pollURL} target="_blank">{cell.row.original.dateString}</Anchor>
+					<Anchor href={cell.row.original.pollURL} target="_blank">
+						{cell.row.original.dateString}
+					</Anchor>
 				),
 			},
 			{
@@ -136,7 +138,7 @@ function App() {
 				filterVariant: "range",
 			},
 		],
-		[],
+		[]
 	);
 
 	const table = useMantineReactTable<Poll>({
@@ -188,6 +190,15 @@ function App() {
 					Made by{" "}
 					<Anchor inherit inline href="https://7x11x13.xyz/" target="_blank">
 						7x11x13
+					</Anchor>
+					. Source code on{" "}
+					<Anchor
+						inherit
+						inline
+						href="https://github.com/7x11x13/crossword"
+						target="_blank"
+					>
+						GitHub
 					</Anchor>
 				</Text>
 				<Space />
