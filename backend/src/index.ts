@@ -238,14 +238,20 @@ async function tryUpdatePollData(env: Env, prisma: PrismaClient, accessToken: st
 
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-		const adapter = new PrismaD1(env.DB);
-		const prisma = new PrismaClient({ adapter });
-		const crosswords = await prisma.crossword.findMany({ orderBy: [{ publishedDate: 'desc' }] });
 		const headers = new Headers({
 			'Access-Control-Allow-Origin': '*',
 			'Access-Control-Allow-Methods': 'GET',
 		});
-		return Response.json(crosswords, { headers });
+		try {
+			const adapter = new PrismaD1(env.DB);
+			const prisma = new PrismaClient({ adapter });
+			const crosswords = await prisma.crossword.findMany({ orderBy: [{ publishedDate: 'desc' }] });
+			return Response.json(crosswords, { headers });
+		} catch (error) {
+			console.error(error);
+			return Response.json({}, { headers, status: 500 });
+
+		}
 	},
 
 	async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
