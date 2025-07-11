@@ -211,7 +211,9 @@ async function tryUpdatePollData(env: Env, prisma: PrismaClient, accessToken: st
 	for (const listing of json.data.children as Listing[]) {
 		const data = listing.data;
 		if (
-			(data.author === 'AutoModerator' || data.author === 'oakgrove') &&
+			(data.author === 'AutoModerator' ||
+				data.author === 'oakgrove' ||
+				data.author === 'Shortz-Bot') &&
 			data.title.startsWith('NYT') &&
 			data.title.endsWith(`${dateString} Discussion`) &&
 			data.poll_data
