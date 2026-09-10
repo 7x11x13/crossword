@@ -2,6 +2,9 @@ name = "crossword"
 main = "./src/index.ts"
 compatibility_date = "2024-07-25"
 
+[cache]
+enabled = true
+
 [[d1_databases]]
 binding = "DB"
 database_name = "crosswords"

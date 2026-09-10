@@ -9,12 +9,12 @@
 		"test": "vitest run"
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20240718.0",
+		"@cloudflare/workers-types": "^5.20260910.1",
 		"@prisma/adapter-d1": "^5.18.0",
 		"@types/he": "^1.2.3",
 		"prisma": "^5.18.0",
 		"typescript": "^5.4.5",
-		"wrangler": "^3.0.0"
+		"wrangler": "^4.131.0"
 	},
 	"dependencies": {
 		"@prisma/client": "^5.18.0",

@@ -146,12 +146,6 @@ export default {
 			headers.set('Allow', 'GET, HEAD, OPTIONS');
 			return new Response(null, { status: 405, headers });
 		}
-		// Every path/query currently returns the same public archive. Use one key
-		// per host so query strings cannot force repeated full-table reads.
-		const cache = caches.default;
-		const cacheKey = new Request(new URL('/', request.url).toString());
-		const cached = await cache.match(cacheKey).catch(() => undefined);
-		if (cached) return request.method === 'HEAD' ? new Response(null, cached) : cached;
 		try {
 			const adapter = new PrismaD1(env.DB);
 			const prisma = new PrismaClient({ adapter });
@@ -159,7 +153,6 @@ export default {
 			// Cloudflare caches for a day; browsers recheck after five minutes.
 			headers.set('Cache-Control', 'public, max-age=300, s-maxage=86400');
 			const response = Response.json(crosswords, { headers });
-			ctx.waitUntil(cache.put(cacheKey, response.clone()).catch(() => {}));
 			return request.method === 'HEAD' ? new Response(null, response) : response;
 		} catch (error) {
 			console.error(error);
