@@ -1,40 +1,13 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaD1 } from '@prisma/adapter-d1';
 import he from 'he';
+import { fetchJson, UpstreamError } from './upstream';
+import { createRedditSession, findRedditPoll, parseClosedPoll, RedditPost, RedditSession } from './reddit';
 
 interface Env {
 	DB: D1Database;
 	FIRST_POLL_DATE: string;
 	POLL_DURATION_DAYS: string;
-	USER_AGENT: string;
-	REDDIT_USERNAME: string;
-	REDDIT_PASSWORD: string;
-	REDDIT_CLIENT_ID: string;
-	REDDIT_CLIENT_SECRET: string;
-}
-
-interface PollOption {
-	text: string;
-	vote_count: number;
-	id: string;
-}
-
-interface PollData {
-	voting_end_timestamp: number;
-	total_vote_count: number;
-	options: PollOption[];
-}
-
-interface ListingData {
-	author: string;
-	title: string;
-	poll_data: PollData;
-	url: string;
-}
-
-interface Listing {
-	kind: string;
-	data: ListingData;
 }
 
 function dateToInt(date: Date) {
@@ -80,21 +53,6 @@ async function getMissingDates(env: Env, prisma: PrismaClient, startDate: Date) 
 	return dates.filter(d => !existingDates.includes(d)).map(intToDate);
 }
 
-async function getAccessToken(env: Env): Promise<string> {
-	const body = new FormData();
-	body.append('grant_type', 'password');
-	body.append('username', env.REDDIT_USERNAME);
-	body.append('password', env.REDDIT_PASSWORD);
-	const headers = new Headers({
-		'Authorization': 'Basic ' + btoa(`${env.REDDIT_CLIENT_ID}:${env.REDDIT_CLIENT_SECRET}`),
-		'User-Agent': env.USER_AGENT,
-	});
-	const url = 'https://www.reddit.com/api/v1/access_token';
-	const response = await fetch(url, { method: 'POST', headers, body });
-	const json = (await response.json()) as any;
-	return json.access_token;
-}
-
 function getDateString(date: Date) {
 	// return UTC date in MM/DD/yyyy format
 	const dateComponents = date.toISOString().substring(0, 10).split('-');
@@ -102,15 +60,17 @@ function getDateString(date: Date) {
 	return dateComponents.join('/');
 }
 
-async function getCrosswordData(date: Date, data: ListingData | null) {
+async function getCrosswordData(date: Date, data: RedditPost) {
 	const params = new URLSearchParams({
 		date: getDateString(date),
 		format: 'text',
 	});
 	const url = 'https://www.xwordinfo.com/JSON/Data.ashx?' + params.toString();
 	const headers = new Headers({ Referer: 'https://www.xwordinfo.com/JSON/' });
-	const response = await fetch(url, { headers });
-	const json: any = await response.json();
+	const json = await fetchJson(url, { headers }, 'XWordInfo metadata');
+	if (typeof json?.author !== 'string' || typeof json?.editor !== 'string') {
+		throw new Error(`XWordInfo metadata missing author or editor for ${getDateString(date)}`);
+	}
 	const ret: any = {
 		publishedDate: dateToInt(date),
 		dateString: getDateString(date),
@@ -118,57 +78,24 @@ async function getCrosswordData(date: Date, data: ListingData | null) {
 		author: he.decode(json.author),
 		editor: he.decode(json.editor),
 	};
-	if (data !== null) {
-		ret.pollURL = data.url;
-	}
+	ret.pollURL = data.url;
 	return ret;
 }
 
-async function insertPollData(prisma: PrismaClient, date: Date, data: ListingData | null) {
+async function insertPollData(prisma: PrismaClient, date: Date, data: RedditPost) {
 	// Insert poll data into our DB
-	const crosswordData = await getCrosswordData(date, data);
-	if (data === null) {
-		return await prisma.crossword.create({
-			data: {
-				...crosswordData,
-				pollExists: false,
-			},
-		});
-	}
-
-	const pollData = data.poll_data;
-
-	if (pollData.voting_end_timestamp > Date.now()) {
-		// Voting hasn't ended yet
-		return null;
-	}
-
-	if (pollData.options.length !== 6) {
-		throw new Error(`Unexpected number of options (${pollData.options.length}) for poll: ${date}`);
-	}
-
-	let counts: Record<string, number | undefined> = {};
-	counts = pollData.options.reduce((map, obj) => ((map[obj.text] = obj.vote_count), map), counts);
-
-	const answerCounts = [
-		counts.Excellent,
-		counts.Good,
-		counts.Average,
-		counts.Poor,
-		counts.Terrible,
-		counts['I just want to see the results'],
-	];
-
-	if (answerCounts.includes(undefined)) {
-		throw new Error(`Unexpected options for poll: ${date}`);
-	}
-
-	const votes = answerCounts.slice(0, -1).reduce((s, v) => s! + v!, 0)!;
+	// Open polls omit option counts; leave them missing until voting closes.
+	const closingTime = (data.poll_data as { voting_end_timestamp?: unknown })?.voting_end_timestamp;
+	if (typeof closingTime === 'number' && Number.isFinite(closingTime) && closingTime > Date.now()) return null;
+	const { counts } = parseClosedPoll(data.poll_data);
+	const votes = counts.Excellent + counts.Good + counts.Average + counts.Poor + counts.Terrible;
+	if (!votes) throw new Error(`Poll has no rating votes for ${getDateString(date)}`);
 
 	function toPercentage(n: number) {
 		return (n / votes) * 100;
 	}
 
+	const crosswordData = await getCrosswordData(date, data);
 	return await prisma.crossword.create({
 		data: {
 			...crosswordData,
@@ -196,46 +123,16 @@ async function insertPollData(prisma: PrismaClient, date: Date, data: ListingDat
 	});
 }
 
-async function tryUpdatePollData(env: Env, prisma: PrismaClient, accessToken: string, date: Date) {
-	// Try to get poll data for the given date from r/crossword
-	// and insert it into our DB
+async function tryUpdatePollData(prisma: PrismaClient, session: RedditSession, date: Date) {
 	const dateString = getDateString(date);
-	const query = encodeURIComponent(`NYT ${dateString} Discussion`);
-	const url = `https://oauth.reddit.com/r/crossword/search.json?q=${query}&sort=relevance&restrict_sr=on&limit=5`;
-	const headers = new Headers({
-		'Authorization': 'bearer ' + accessToken,
-		'User-Agent': env.USER_AGENT,
-	});
-	const response = await fetch(url, { headers });
-	const json = (await response.json()) as any;
-	for (const listing of json.data.children as Listing[]) {
-		const data = listing.data;
-		if (
-			(data.author === 'AutoModerator' ||
-				data.author === 'oakgrove' ||
-				data.author === 'Shortz-Bot') &&
-			data.title.startsWith('NYT') &&
-			data.title.endsWith(`${dateString} Discussion`) &&
-			data.poll_data
-		) {
-			try {
-				const inserted = await insertPollData(prisma, date, data);
-				console.log(`Inserted crossword (${dateString}): ${JSON.stringify(inserted)}`);
-			} catch (e) {
-				console.log(e);
-			}
-			return;
-		}
+	const data = await findRedditPoll(session, dateString);
+	if (data) {
+		const inserted = await insertPollData(prisma, date, data);
+		console.log({ event: inserted ? 'poll_inserted' : 'poll_pending', date: dateString });
+		return;
 	}
-	// if we cant find the poll for 2 weeks ago,
-	// we probably wont ever be able to find it
-	// so we insert a null poll
-	const notExistsCutoff = new Date();
-	notExistsCutoff.setUTCDate(notExistsCutoff.getUTCDate() - parseInt(env.POLL_DURATION_DAYS) * 2);
-	if (date < notExistsCutoff) {
-		const inserted = await insertPollData(prisma, date, null);
-		console.log(`Inserted crossword (${dateString}): ${JSON.stringify(inserted)}`);
-	}
+	// Search relevance/availability is not evidence that a poll never existed.
+	throw new Error(`No matching discussion for ${dateString}; leaving date for retry`);
 }
 
 export default {
@@ -260,10 +157,25 @@ export default {
 		const adapter = new PrismaD1(env.DB);
 		const prisma = new PrismaClient({ adapter });
 		const missing = await getMissingDates(env, prisma, new Date(env.FIRST_POLL_DATE));
-		console.log(missing);
-		const accessToken = await getAccessToken(env);
-		for (const date of missing) {
-			await tryUpdatePollData(env, prisma, accessToken, date);
+		console.log({ event: 'update_started', missing: missing.length });
+		if (!missing.length) return;
+		const session = await createRedditSession();
+		// Bound backfill work per cron: at most 15 Reddit, 15 metadata and 15 database writes.
+		const batch = missing.slice(0, 15);
+		let failed = 0;
+		for (const date of batch) {
+			try {
+				await tryUpdatePollData(prisma, session, date);
+			} catch (error) {
+				console.error({ event: 'poll_update_failed', date: getDateString(date),
+					error: error instanceof Error ? error.message : 'Unknown error' });
+				// Stop on shared upstream failures rather than hammering a blocked or
+				// rate-limited service. These dates remain missing and will be retried.
+				if (error instanceof UpstreamError) throw error;
+				failed++;
+			}
 		}
+		if (failed) throw new Error(`Poll update failed for ${failed} date(s); see poll_update_failed logs`);
+		console.log({ event: 'update_completed', attempted: batch.length, deferred: missing.length - batch.length });
 	},
 };

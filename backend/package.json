@@ -6,7 +6,8 @@
 		"deploy": "wrangler deploy src/index.ts",
 		"dev": "wrangler dev --test-scheduled --port 8787",
 		"start": "wrangler dev --test-scheduled --port 8787",
-		"test": "vitest run"
+		"test": "vitest run",
+		"probe:reddit": "node experiments/run-reddit-probe.mjs"
 	},
 	"devDependencies": {
 		"@cloudflare/workers-types": "^4.20240718.0",
@@ -14,7 +15,8 @@
 		"@types/he": "^1.2.3",
 		"prisma": "^5.18.0",
 		"typescript": "^5.4.5",
-		"wrangler": "^3.0.0"
+		"vitest": "^5.0.0",
+		"wrangler": "^3.114.17"
 	},
 	"dependencies": {
 		"@prisma/client": "^5.18.0",
