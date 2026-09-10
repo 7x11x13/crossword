@@ -1,6 +1,0 @@
-{
-  "name": "crossword-reddit-probe",
-  "main": "reddit-probe.ts",
-  "compatibility_date": "2024-07-25",
-  "workers_dev": false
-}
