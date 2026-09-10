@@ -139,16 +139,34 @@ export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
 		const headers = new Headers({
 			'Access-Control-Allow-Origin': '*',
-			'Access-Control-Allow-Methods': 'GET',
+			'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
 		});
+		if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
+		if (request.method !== 'GET' && request.method !== 'HEAD') {
+			headers.set('Allow', 'GET, HEAD, OPTIONS');
+			return new Response(null, { status: 405, headers });
+		}
+		// Every path/query currently returns the same public archive. Use one key
+		// per host so query strings cannot force repeated full-table reads.
+		const cache = caches.default;
+		const cacheKey = new Request(new URL('/', request.url).toString());
+		const cached = await cache.match(cacheKey).catch(() => undefined);
+		if (cached) return request.method === 'HEAD' ? new Response(null, cached) : cached;
 		try {
 			const adapter = new PrismaD1(env.DB);
 			const prisma = new PrismaClient({ adapter });
 			const crosswords = await prisma.crossword.findMany({ orderBy: [{ publishedDate: 'desc' }] });
-			return Response.json(crosswords, { headers });
+			// Cloudflare caches for a day; browsers recheck after five minutes.
+			headers.set('Cache-Control', 'public, max-age=300, s-maxage=86400');
+			const response = Response.json(crosswords, { headers });
+			ctx.waitUntil(cache.put(cacheKey, response.clone()).catch(() => {}));
+			return request.method === 'HEAD' ? new Response(null, response) : response;
 		} catch (error) {
 			console.error(error);
-			return Response.json({}, { headers, status: 500 });
+			headers.set('Cache-Control', 'no-store');
+			return request.method === 'HEAD'
+				? new Response(null, { headers, status: 500 })
+				: Response.json({}, { headers, status: 500 });
 
 		}
 	},
