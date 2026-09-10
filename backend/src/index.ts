@@ -128,7 +128,7 @@ async function tryUpdatePollData(prisma: PrismaClient, session: RedditSession, d
 	const data = await findRedditPoll(session, dateString);
 	if (data) {
 		const inserted = await insertPollData(prisma, date, data);
-		console.log({ event: inserted ? 'poll_inserted' : 'poll_pending', date: dateString });
+		console.log(`Inserted crossword (${dateString}): ${JSON.stringify(inserted)}`);
 		return;
 	}
 	// Search relevance/availability is not evidence that a poll never existed.
@@ -157,25 +157,20 @@ export default {
 		const adapter = new PrismaD1(env.DB);
 		const prisma = new PrismaClient({ adapter });
 		const missing = await getMissingDates(env, prisma, new Date(env.FIRST_POLL_DATE));
-		console.log({ event: 'update_started', missing: missing.length });
+		console.log(missing);
 		if (!missing.length) return;
 		const session = await createRedditSession();
 		// Bound backfill work per cron: at most 15 Reddit, 15 metadata and 15 database writes.
 		const batch = missing.slice(0, 15);
-		let failed = 0;
 		for (const date of batch) {
 			try {
 				await tryUpdatePollData(prisma, session, date);
 			} catch (error) {
-				console.error({ event: 'poll_update_failed', date: getDateString(date),
-					error: error instanceof Error ? error.message : 'Unknown error' });
+				console.log(error);
 				// Stop on shared upstream failures rather than hammering a blocked or
 				// rate-limited service. These dates remain missing and will be retried.
 				if (error instanceof UpstreamError) throw error;
-				failed++;
 			}
 		}
-		if (failed) throw new Error(`Poll update failed for ${failed} date(s); see poll_update_failed logs`);
-		console.log({ event: 'update_completed', attempted: batch.length, deferred: missing.length - batch.length });
 	},
 };
