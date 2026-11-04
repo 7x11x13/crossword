@@ -14,7 +14,8 @@
 		"@types/he": "^1.2.3",
 		"prisma": "^5.18.0",
 		"typescript": "^5.4.5",
-		"wrangler": "^4.131.0"
+		"wrangler": "^4.131.0",
+		"esbuild": "0.28.1"
 	},
 	"dependencies": {
 		"@prisma/client": "^5.18.0",

@@ -1,0 +1,29 @@
+name: Update crossword polls
+on:
+  schedule:
+    - cron: '35 12 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: update-crossword-polls
+  cancel-in-progress: false
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+        working-directory: backend
+      - name: Build updater
+        working-directory: backend
+        run: ./node_modules/.bin/esbuild scripts/update-polls.mjs --bundle --platform=node --format=esm --outfile=/tmp/update-polls.mjs
+      - name: Collect closed polls and update D1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node /tmp/update-polls.mjs
