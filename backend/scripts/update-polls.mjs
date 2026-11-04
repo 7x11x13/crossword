@@ -41,7 +41,7 @@ if (missing.length) {
   } catch (error) {
    failed++;
    console.error(`${key}: ${error.message}`);
-   if (error instanceof UpstreamError || /HTTP (403|429)/.test(error.message)) break;
+   if (error instanceof UpstreamError && !error.message.includes('HTTP 404')) break;
   }
  }
  if (failed) process.exitCode = 1;
