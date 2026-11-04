@@ -16,29 +16,12 @@ jobs:
           node-version: '22'
       - run: npm ci
         working-directory: backend
-      - name: Check from GitHub runner
+      - name: Build and validate updater
         run: |
-          backend/node_modules/.bin/esbuild .github/diagnostics/worker.ts --bundle --platform=node --format=esm --outfile=.github/diagnostics/worker-bundle.mjs
-          node .github/diagnostics/runner.mjs
-      - name: Test deployed diagnostic Worker
+          backend/node_modules/.bin/tsc --noEmit -p backend
+          backend/node_modules/.bin/esbuild backend/scripts/update-polls.mjs --bundle --platform=node --format=esm --outfile=/tmp/update-polls.mjs
+      - name: Validate missing polls without writes
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          backend/node_modules/.bin/wrangler deploy --config .github/diagnostics/wrangler.jsonc
-          sleep 10
-          curl --fail-with-body --retry 3 --max-time 150 https://crossword-upstream-diagnostic.x7x11x13.workers.dev/ -o /tmp/results.json
-          jq . /tmp/results.json
-          {
-            echo '### Deployed Cloudflare Worker upstream results'
-            echo '```json'
-            jq . /tmp/results.json
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Remove diagnostic Worker
-        if: always()
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: backend/node_modules/.bin/wrangler delete --config .github/diagnostics/wrangler.jsonc --force
+        run: node /tmp/update-polls.mjs --dry-run
