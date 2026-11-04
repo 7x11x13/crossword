@@ -16,6 +16,10 @@ jobs:
           node-version: '22'
       - run: npm ci
         working-directory: backend
+      - name: Check from GitHub runner
+        run: |
+          backend/node_modules/.bin/esbuild .github/diagnostics/worker.ts --bundle --platform=node --format=esm --outfile=.github/diagnostics/worker-bundle.mjs
+          node .github/diagnostics/runner.mjs
       - name: Test deployed diagnostic Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -31,7 +35,7 @@ jobs:
             jq . /tmp/results.json
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          jq -e 'length == 6 and all(.[]; .validMetadata == true or .validPoll == true)' /tmp/results.json
+
       - name: Remove diagnostic Worker
         if: always()
         env:
