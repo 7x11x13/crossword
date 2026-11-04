@@ -11,8 +11,4 @@ database_name = "crosswords"
 database_id = "d3e2c556-85f7-41c6-970e-f6db9b486edf"
 
 [triggers]
-crons = [ "*/15 * * * *" ]
-
-[vars]
-FIRST_POLL_DATE = "2020-11-27"
-POLL_DURATION_DAYS = "7"
+crons = []
