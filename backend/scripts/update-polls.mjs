@@ -1,5 +1,5 @@
 import { createRedditSession, findRedditPoll } from '../src/reddit.ts';
-import { collectPollData } from '../src/collect.ts';
+import { collectPollData, fetchPuzzleMetadata } from '../src/collect.ts';
 import { fetchJson, UpstreamError } from '../src/upstream.ts';
 
 const account = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -22,16 +22,20 @@ for (let date = new Date('2020-11-27T00:00:00Z'); date <= end; date.setUTCDate(d
 }
 console.log(JSON.stringify({missing: missing.length, dryRun: process.argv.includes('--dry-run')}));
 if (missing.length) {
+ const batch = missing.slice(0, 60);
+ const metadata = await fetchPuzzleMetadata(batch[0], batch[batch.length - 1]);
  const session = await createRedditSession();
  let failed = 0;
  // Bound one run while allowing the current backlog to be recovered in one pass.
- for (const date of missing.slice(0, 60)) {
+ for (const date of batch) {
   const iso = date.toISOString().slice(0,10);
   const key = `${iso.slice(5,7)}/${iso.slice(8,10)}/${iso.slice(0,4)}`;
   try {
    const post = await findRedditPoll(session, key);
    if (!post) throw new Error('No matching discussion');
-   const row = await collectPollData(date, post);
+   const puzzle = metadata.get(iso);
+   if (!puzzle) throw new Error('No NYT metadata for date');
+   const row = collectPollData(date, post, puzzle);
    if (!row) { console.log(`${key}: voting still open`); continue; }
    if (!process.argv.includes('--dry-run')) {
     const columns = Object.keys(row);
