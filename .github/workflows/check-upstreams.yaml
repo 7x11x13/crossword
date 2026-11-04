@@ -2,7 +2,7 @@ name: Check upstreams from Cloudflare edge
 on:
   push:
     branches: [diagnostic/upstream-edge-check]
-    paths: [.github/diagnostics/**, .github/workflows/check-upstreams.yaml]
+    paths: [backend/**, .github/diagnostics/**, .github/workflows/check-upstreams.yaml]
 permissions:
   contents: read
 jobs:
