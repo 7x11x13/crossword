@@ -16,27 +16,25 @@ jobs:
           node-version: '22'
       - run: npm ci
         working-directory: backend
-      - name: Test metadata and Reddit in a remote preview Worker
+      - name: Test deployed diagnostic Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          backend/node_modules/.bin/wrangler dev --remote --config .github/diagnostics/wrangler.jsonc --ip 127.0.0.1 --port 8791 --inspector-port 9231 > /tmp/edge-preview.log 2>&1 &
-          preview_pid=$!
-          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
-          ready=0
-          for attempt in $(seq 1 60); do
-            if grep -q 'Ready on' /tmp/edge-preview.log; then ready=1; break; fi
-            if ! kill -0 "$preview_pid" 2>/dev/null; then break; fi
-            sleep 2
-          done
-          if [ "$ready" != 1 ]; then cat /tmp/edge-preview.log; exit 1; fi
-          curl --fail-with-body --max-time 150 http://127.0.0.1:8791/ -o /tmp/results.json
-          cat /tmp/results.json | jq .
+          backend/node_modules/.bin/wrangler deploy --config .github/diagnostics/wrangler.jsonc
+          sleep 10
+          curl --fail-with-body --retry 3 --max-time 150 https://crossword-upstream-diagnostic.x7x11x13.workers.dev/ -o /tmp/results.json
+          jq . /tmp/results.json
           {
-            echo '### Cloudflare edge upstream results'
+            echo '### Deployed Cloudflare Worker upstream results'
             echo '```json'
             jq . /tmp/results.json
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           jq -e 'length == 6 and all(.[]; .validMetadata == true or .validPoll == true)' /tmp/results.json
+      - name: Remove diagnostic Worker
+        if: always()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: backend/node_modules/.bin/wrangler delete --config .github/diagnostics/wrangler.jsonc --force
