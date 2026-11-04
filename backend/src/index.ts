@@ -131,7 +131,7 @@ async function tryUpdatePollData(prisma: PrismaClient, session: RedditSession, d
 		console.log(`Inserted crossword (${dateString}): ${JSON.stringify(inserted)}`);
 		return;
 	}
-	// Search relevance/availability is not evidence that a poll never existed.
+	// Listing availability is not evidence that a poll never existed.
 	throw new Error(`No matching discussion for ${dateString}; leaving date for retry`);
 }
 
@@ -171,7 +171,7 @@ export default {
 		console.log(missing);
 		if (!missing.length) return;
 		const session = await createRedditSession();
-		// Bound backfill work per cron: at most 15 Reddit, 15 metadata and 15 database writes.
+		// Bound backfill work per cron: at most 10 listing pages, 15 metadata requests and 15 database writes.
 		const batch = missing.slice(0, 15);
 		for (const date of batch) {
 			try {

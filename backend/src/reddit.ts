@@ -34,7 +34,10 @@ export async function createRedditSession() {
 		const value = result.headers.get(name);
 		if (value) headers.set(name, value);
 	}
-	return { headers, expiresAt: Date.now() + (token.expires_in - 30) * 1000 };
+	return {
+		headers, expiresAt: Date.now() + (token.expires_in - 30) * 1000,
+		pages: [] as Json[][], after: undefined as string | null | undefined,
+	};
 }
 
 export function parseClosedPoll(value: unknown, now = Date.now()) {
@@ -62,19 +65,35 @@ export interface RedditPost {
 
 export async function findRedditPoll(session: RedditSession, date: string): Promise<RedditPost | null> {
 	if (Date.now() >= session.expiresAt) throw new UpstreamError('Reddit session expired; retry next run');
-	const query = new URLSearchParams({ q: `title:"${date}" AND title:NYT AND title:Discussion`, sort: 'relevance', restrict_sr: 'on', limit: '25', raw_json: '1' });
-	const json = await fetchJson(`https://oauth.reddit.com/r/crossword/search.json?${query}`, { headers: session.headers }, 'Reddit search');
-	const children = record(record(json).data).children;
-	if (!Array.isArray(children)) throw new UpstreamError('Reddit search: response did not contain a listing');
-	const matches: RedditPost[] = [];
-	for (const child of children) {
-		const post = record(record(child).data);
-		if (typeof post.author !== 'string' || typeof post.title !== 'string') throw new UpstreamError('Reddit search: malformed listing entry');
-		if (!['AutoModerator', 'oakgrove', 'Shortz-Bot'].includes(post.author) || !post.title.startsWith('NYT') || !post.title.endsWith(`${date} Discussion`)) continue;
-		if (typeof post.url !== 'string' || !post.url.startsWith('https://www.reddit.com/')) throw new Error(`Invalid poll URL for ${date}`);
-		if (!post.poll_data) throw new Error(`Discussion is missing poll data for ${date}`);
-		matches.push({ title: post.title, url: post.url, poll_data: post.poll_data });
+	// Reuse listing pages for every date in this cron run. Bound pagination to
+	// Reddit's recent submission history; absent dates remain eligible for retry.
+	for (let page = 0; page < 10; page++) {
+		if (!session.pages[page]) {
+			if (session.after === null) break;
+			const query = new URLSearchParams({ sort: 'new', limit: '100', raw_json: '1' });
+			if (session.after) query.set('after', session.after);
+			const json = await fetchJson(`https://oauth.reddit.com/user/Shortz-Bot/submitted.json?${query}`, { headers: session.headers }, 'Reddit submissions');
+			const listing = record(record(json).data);
+			if (!Array.isArray(listing.children) || (listing.after !== null && typeof listing.after !== 'string')) {
+				throw new UpstreamError('Reddit submissions: response did not contain a valid listing');
+			}
+			const posts = listing.children.map(child => record(record(child).data));
+			if (posts.some(post => typeof post.author !== 'string' || typeof post.title !== 'string' || typeof post.subreddit !== 'string')) {
+				throw new UpstreamError('Reddit submissions: malformed listing entry');
+			}
+			if (listing.after && listing.after === session.after) throw new UpstreamError('Reddit submissions: repeated pagination cursor');
+			session.pages.push(posts);
+			session.after = listing.after as string | null;
+		}
+		const matches: RedditPost[] = [];
+		for (const post of session.pages[page]) {
+			if (post.author !== 'Shortz-Bot' || post.subreddit !== 'crossword' || typeof post.title !== 'string' || !post.title.startsWith('NYT') || !post.title.endsWith(`${date} Discussion`)) continue;
+			if (typeof post.url !== 'string' || !post.url.startsWith('https://www.reddit.com/')) throw new Error(`Invalid poll URL for ${date}`);
+			if (!post.poll_data) throw new Error(`Discussion is missing poll data for ${date}`);
+			matches.push({ title: post.title, url: post.url, poll_data: post.poll_data });
+		}
+		if (matches.length > 1) throw new Error(`Multiple matching discussions for ${date}`);
+		if (matches.length) return matches[0];
 	}
-	if (matches.length > 1) throw new Error(`Multiple matching discussions for ${date}`);
-	return matches[0] ?? null;
+	return null;
 }
