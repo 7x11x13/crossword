@@ -92,7 +92,15 @@ export async function findRedditPoll(session: RedditSession, date: string): Prom
 			if (!post.poll_data) throw new Error(`Discussion is missing poll data for ${date}`);
 			matches.push({ title: post.title, url: post.url, poll_data: post.poll_data });
 		}
-		if (matches.length > 1) throw new Error(`Multiple matching discussions for ${date}`);
+		if (matches.length > 1) {
+			// The bot occasionally publishes the same daily discussion twice. Use
+			// the closed poll with the most participation, never combine its votes.
+			const ranked = matches.map(post => ({ post, total: parseClosedPoll(post.poll_data).total }))
+				.sort((a, b) => b.total - a.total);
+			if (ranked[0].total === ranked[1].total) throw new Error(`Ambiguous duplicate discussions for ${date}`);
+			console.log(`Duplicate discussions for ${date}; selected ${ranked[0].post.url} (${ranked[0].total} votes)`);
+			return ranked[0].post;
+		}
 		if (matches.length) return matches[0];
 	}
 	return null;
